@@ -19,13 +19,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.text.ParseException;
 import java.util.Arrays;
 import java.util.List;
 
-import org.json.JSONArray;
 import org.json.JSONException;
-import org.json.JSONObject;
 
+import com.back4app.mongo.connector.MongoDAO;
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
 import com.google.api.client.extensions.jetty.auth.oauth2.LocalServerReceiver;
@@ -49,11 +49,10 @@ import com.google.api.services.bigquery.model.JobConfigurationQuery;
 import com.google.api.services.bigquery.model.JobReference;
 import com.google.api.services.bigquery.model.TableCell;
 import com.google.api.services.bigquery.model.TableRow;
-import com.google.cloud.bigquery.views.Client;
-import com.google.cloud.bigquery.views.Creative;
-import com.hibernate.mysql.common.CommonFunctions;
-import com.hibernate.mysql.common.FactoryClass;
-import com.parse.campaign.request.ParseCampaignUpdater;
+import com.google.cloud.bigquery.views.ClientBQ;
+import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Updates;
+import com.mongodb.client.result.UpdateResult;
 
 /**
  * Example of authorizing with BigQuery and reading from a public dataset.
@@ -72,11 +71,11 @@ public class BigQueryJavaGettingStarted {
   // to the file you downloaded.
   /////////////////////////
   private static final String PROJECT_ID = "stellar-display-145814";
-  private static final String CLIENTSECRETS_LOCATION = "C:\\Users\\bhuvnesh\\Eclipse_Workspace\\Xplanck\\Core\\bigquery-samples-java\\client_secret_154911048506-ign21bljsc6jmrdvrd84tqt3a6omk5be.apps.googleusercontent.com.json";
+  private static final String CLIENTSECRETS_LOCATION = "C:\\Program Files\\Java\\projects\\BigqueryClientLifetime\\target\\client_secret_154911048506-ign21bljsc6jmrdvrd84tqt3a6omk5be.apps.googleusercontent.com.json";
 
   static GoogleClientSecrets clientSecrets = loadClientSecrets();
 
-    // Static variables for API scope, callback URI, and HTTP/JSON functions
+  // Static variables for API scope, callback URI, and HTTP/JSON functions
   private static final List<String> SCOPES = Arrays.asList(BigqueryScopes.BIGQUERY);
   private static final String REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob";
 
@@ -86,14 +85,13 @@ public class BigQueryJavaGettingStarted {
 
   private static GoogleAuthorizationCodeFlow flow = null;
 
-    /** Directory to store user credentials. */
-  private static final java.io.File DATA_STORE_DIR =
-      new java.io.File(System.getProperty("user.home"), ".store/bq_sample");
+  /** Directory to store user credentials. */
+  private static final java.io.File DATA_STORE_DIR = new java.io.File(System.getProperty("user.home"), ".store/bq_sample");
 
   /**
    * Global instance of the {@link DataStoreFactory}. The best practice is to make it a single
    * globally shared instance across your application.
-   */
+  */
   private static FileDataStoreFactory dataStoreFactory;
 
   /**
@@ -101,78 +99,30 @@ public class BigQueryJavaGettingStarted {
    * @throws IOException
    * @throws InterruptedException
  * @throws JSONException 
+ * @throws ParseException 
    */
-  public static void main(String[] args) throws IOException, InterruptedException, JSONException {
+  public static void main(String[] args) throws IOException, InterruptedException, JSONException, ParseException {
     // Create a new BigQuery client authorized via OAuth 2.0 protocol
     // dataStoreFactory = new FileDataStoreFactory(DATA_STORE_DIR);
     Bigquery bigquery = createAuthorizedClient();
     // Print out available datasets in the "publicdata" project to the console
     listDatasets(bigquery, PROJECT_ID);
     
-    List<Creative> list = CommonFunctions.getSmartCreative();
-    
-    for(Creative creative : list)
-    {
-    	Client client = CommonFunctions.getClientById(CommonFunctions.getClientIdByCreativeId(creative.getId()));
-    	
-    	String hostname = client.getWebsite();
-    	
-    	String regexMatch = null;
-    	
-    	if(null == hostname){
-    		continue;
-    	}
-    	else{
-    		
-    		if(hostname.substring(0, 8).equals("https://"))
-    		{
-    			regexMatch = hostname.substring(8);
-    		}
-    		
-    		if(hostname.substring(0,7).equals("http://"))
-    		{
-    			regexMatch = hostname.substring(7);
-    		}
-    		
-    		if(hostname.substring(0, 4).equals("www."))
-    		{
-    			regexMatch = hostname.substring(4);
-    		}
-    		
-    		if(hostname.substring(0, 2).equals("//"))
-    		{
-    			regexMatch = hostname.substring(2);
-    		}
-    			
-    	}
-    	
-    	if((null == creative.getRule() || creative.getRule().equals("")) && (regexMatch.equals("") || null == regexMatch))
-    	{
-    		continue;
-    	}
-    	
-    	pushInput(bigquery, hostname, creative);
-    }
-    
-    System.out.println("Updated Successfully");
-
-    FactoryClass.factory.close();
-    
-    System.exit(0);
-    
+    pushInput(bigquery);
+  
   }
   
-  public static void pushInput(Bigquery bigquery, String hostname, Creative creative) throws IOException, InterruptedException, JSONException
+  public static void pushInput(Bigquery bigquery) throws IOException, InterruptedException, JSONException
   {
-	// Start a Query Job
-	    String querySql = "SELECT * FROM ["+PROJECT_ID+":table_output.product_smart] where hostname like '%"+hostname+"%' and ruleSmart = '"+creative.getRule()+"';";
-	    JobReference jobId = startQuery(bigquery, PROJECT_ID, querySql);
+ 	  String querySql = "SELECT parse_client_id, impressions, clicks, sales, sale_inr, status, avbl_budget_inr FROM ["+PROJECT_ID+":dsp_processed.client_lifetime];";
+	     
+	  JobReference jobId = startQuery(bigquery, PROJECT_ID, querySql);
 
-	    // Poll for Query Results, return result output
-	    Job completedJob = checkQueryResults(bigquery, PROJECT_ID, jobId);
+	  // Poll for Query Results, return result output
+	  Job completedJob = checkQueryResults(bigquery, PROJECT_ID, jobId);
 
-	    // Return and display the results of the Query Job
-	    displayQueryResults(bigquery, PROJECT_ID, completedJob, creative);
+	  // Return and display the results of the Query Job
+	  displayQueryResults(bigquery, PROJECT_ID, completedJob);
   }
 
   /** Authorizes the installed application to access user's protected data. */
@@ -202,6 +152,7 @@ public class BigQueryJavaGettingStarted {
 
     Credential credential = authorize();
     return new Bigquery(TRANSPORT, JSON_FACTORY, credential);
+  
   }
 
   /**
@@ -299,44 +250,71 @@ public class BigQueryJavaGettingStarted {
  * @throws JSONException 
    */
   private static void displayQueryResults(Bigquery bigquery,
-                                          String projectId, Job completedJob, Creative creative) throws IOException, JSONException {
+                                          String projectId, Job completedJob) throws IOException, JSONException {
     GetQueryResultsResponse queryResult = bigquery.jobs()
         .getQueryResults(
             projectId, completedJob
             .getJobReference()
             .getJobId()
         ).execute();
-    List<TableRow> rows = queryResult.getRows();
-    System.out.print("\nQuery Results:\n------------\n");
     
-    JSONArray product_array = new JSONArray();
+    int totRows = queryResult.getTotalRows().intValue();
     
-    for (TableRow row : rows) {
-    	for (TableCell field : row.getF()) {
-    	      System.out.printf("%-50s", field.getV());
-    	}
-    	JSONObject product = new JSONObject();
-    	List<TableCell> list = row.getF();
-    	product.put("name",list.get(4).getV());
-    	product.put("description", "");
-    	product.put("product_image_url", list.get(6).getV());
-    	product.put("landing_page_url", list.get(3).getV());
-    	System.out.println(product.toString());
-    	product_array.put(product);
+    System.out.println("Total Rows fetched are : "+totRows);
+    
+    if(totRows != 0){
+    	
+    	List<TableRow> rows = queryResult.getRows();
+    	
+    	for (TableRow row : rows) {
+        	
+    		for (TableCell field : row.getF()) {
+        	      System.out.printf("%-50s", field.getV());
+        	}
+        	
+        	List<TableCell> list = row.getF();
+        	
+        	ClientBQ client = new ClientBQ();
+        	
+            client.setClient_id((String)list.get(0).getV());
+            client.setImpressions(Integer.parseInt(list.get(1).getV().toString()));
+            client.setClicks(Integer.parseInt(list.get(2).getV().toString()));
+            client.setSales(Integer.parseInt(list.get(3).getV().toString()));
+            client.setSales_inr(Float.parseFloat(list.get(4).getV().toString()));
+            client.setStatus(Integer.parseInt(list.get(5).getV().toString()));
+            client.setAvbl_budget_inr(Float.parseFloat(list.get(6).getV().toString()));
+        	
+        	System.out.println(client.setString());
+        	
+            if(null != client.getClient_id()){
+        	//if(null != list.get(0).getV()){
+        			        		
+         		UpdateResult result = null;
+        		
+        	    result = MongoDAO.getMongoObject().updateOne(Filters.eq("_id", client.getClient_id()), Updates.combine(Updates.set("impressions", client.getImpressions()),Updates.set("clicks", client.getClicks()),Updates.set("conversion", client.getSales()),Updates.set("conversion_value", client.getSales_inr()),Updates.set("status", client.getStatus()),Updates.set("available_budget", client.getAvbl_budget_inr())));
+        		//result = MongoDAO.getMongoObject().updateOne(Filters.eq("_id", list.get(0).getV()), Updates.combine(Updates.set("impressions", list.get(1).getV()),Updates.set("clicks", list.get(2).getV()),Updates.set("conversion", list.get(3).getV()),Updates.set("conversion_value", list.get(4).getV()),Updates.set("status", list.get(5).getV()),Updates.set("available_budget", list.get(6).getV())));
+        		System.out.println(result);
+        		
+        	}
+        	else{
+        		
+        		System.out.println("The client id is not available in Big Query.");
+        		
+        	}
+    	}         
+    	
     }
     
-    JSONObject request_data = new JSONObject();
+    else{
+    	System.out.println("There is no data in the Client Lifetime Big Query Table.");
+    }
     
-    request_data.put("is_updated", 2);
-    request_data.put("is_updated_creative", 1);
-    request_data.put("products", product_array);
-    try {
-		ParseCampaignUpdater.dataInsertParse(creative.getParse_campaign_id(), request_data);
-	} catch (Exception e) {
-		e.printStackTrace();
-	}
+	MongoDAO.database = null;
+	MongoDAO.collection = null;
+	MongoDAO.client.close();
+    
   }
-  // [END display_result]
+     // [END display_result]
 
   /**
    * Helper to load client ID/Secret from file.
@@ -346,7 +324,7 @@ public class BigQueryJavaGettingStarted {
   private static GoogleClientSecrets loadClientSecrets() {
     try {
       InputStream inputStream = new FileInputStream(CLIENTSECRETS_LOCATION);
-        Reader reader =
+      Reader reader =
           new InputStreamReader(inputStream);
         GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(new JacksonFactory(),
                 reader);
@@ -357,6 +335,5 @@ public class BigQueryJavaGettingStarted {
     }
     return null;
   }
-
 
 }
